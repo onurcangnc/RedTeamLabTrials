@@ -1,62 +1,62 @@
 # RedTeamLabTrials
 
-**EDR Atlatma Araştırmaları — AMSI/ETW Bypass + Win32 Native Dosya İşlemleri C# ile**
+**EDR Evasion Research — AMSI/ETW Bypass + Native Win32 File Operations in C#**
 
-> ⚠️ **Yalnızca Yetkili Kullanım.** Bu depo, eğitim amaçlı ve yetkili red-team araştırmaları için konsept kanıtı uygulamalar içerir. Sahibi olmadığınız veya açık izniniz bulunmayan sistemlere karşı yetkisiz kullanım yasa dışıdır.
-
----
-
-## Genel Bakış
-
-Windows saldırı güvenliği araç geliştirme için araştırma ortamı. Şunları gösterir:
-
-- **AMSI Yama** — Çalışma zamanı bellek değişikliği ile `AmsiScanBuffer`'ı bypass etme
-- **ETW Yama** — `ntdll.dll` bellek yaması ile `EtwEventWrite`'ı devre dışı bırakma
-- **Native Win32 G/Ç** — Yönetilen kod izlemeyi bypass etmek için ham Win32 API ile dosya işlemleri
-- **Tanı Araçları** — SAM/LSA/SSH/WiFi numaralamayı gösteren sistem erişim modülleri
+> ⚠️ **Authorized Use Only.** This repository contains proof-of-concept implementations for educational and authorized red-team research. Unauthorized use against systems you do not own or have explicit permission to test is illegal.
 
 ---
 
-## Depo İçeriği
+## Overview
 
-| Dosya | Açıklama |
-|-------|----------|
-| `EdrEvader.cs` | XOR ile gizlenmiş yollar ve native Win32 dosya yazma ile AMSI + ETW çift yaması |
-| `EdrEvader_NoObfuscation.cs` | Dize gizlemesi olmadan aynı teknik (karşılaştırma taban çizgisi) |
-| `sam_lsa_wifi_ssh.cs` | Sistem tanı aracı — SAM kayıt defteri, LSA sırları, SSH anahtar keşfi, WiFi profili çıkarma |
+Research sandbox for Windows offensive security tooling development. Demonstrates:
+
+- **AMSI Patching** — Bypass `AmsiScanBuffer` via runtime memory modification
+- **ETW Patching** — Disable `EtwEventWrite` via `ntdll.dll` memory patching
+- **Native Win32 I/O** — File operations using raw Win32 API to bypass managed-code monitoring
+- **Diagnostic Utilities** — System access modules demonstrating SAM/LSA/SSH/WiFi enumeration
 
 ---
 
-## Teknik Detaylar
+## Repository Contents
 
-### AMSI Yaması
+| File | Description |
+|------|-------------|
+| `EdrEvader.cs` | AMSI + ETW dual patch with XOR-obfuscated paths and native Win32 file write |
+| `EdrEvader_NoObfuscation.cs` | Same technique without string obfuscation (comparison baseline) |
+| `sam_lsa_wifi_ssh.cs` | System diagnostics tool — SAM registry, LSA secrets, SSH key discovery, WiFi profile extraction |
 
-`AmsiScanBuffer`'ı her zaman `AMSI_RESULT_CLEAN` döndürecek şekilde yamalar:
+---
+
+## Technical Details
+
+### AMSI Patch
+
+Patches `AmsiScanBuffer` to always return `AMSI_RESULT_CLEAN`:
 
 ```
 mov eax, 0x00005700    ; AMSI_RESULT_CLEAN
 ret
 ```
 
-### ETW Yaması
+### ETW Patch
 
-`ntdll.dll` içinde `EtwEventWrite`'ı devre dışı bırakır:
+Disables `EtwEventWrite` in `ntdll.dll`:
 
 ```
-ret                     ; 0xC3 (anında dönüş)
+ret                     ; 0xC3 (immediate return)
 ```
 
-### Neden Ham Win32 API?
+### Why Raw Win32 API?
 
-Standart `System.IO` yöntemleri genellikle EDR/AV tarafından CLR seviyesinde hooklanır. Ham `CreateFile` → `WriteFile` → `CloseHandle`, yönetilen kod enstrümantasyonunun altında çalışır.
+Standard `System.IO` methods are often hooked by EDR/AV at the CLR level. Raw `CreateFile` → `WriteFile` → `CloseHandle` operates below managed-code instrumentation.
 
 ---
 
-## Derleme Gereksinimleri
+## Build Requirements
 
-- Windows İşletim Sistemi (API'ye özgü işlevsellik)
-- .NET 6.0+ SDK veya `csc` derleyicisi
-- Yönetici ayrıcalıkları (AMSI/ETW yaması ve tanı modülleri için)
+- Windows OS (API-specific functionality)
+- .NET 6.0+ SDK or `csc` compiler
+- Administrator privileges (for AMSI/ETW patching and diagnostic modules)
 
 ```bash
 csc EdrEvader.cs -out:EdrEvader.exe
@@ -64,19 +64,19 @@ csc EdrEvader.cs -out:EdrEvader.exe
 
 ---
 
-## Tespit Rehberi (Mavi Takım)
+## Detection Guidance (Blue Team)
 
-| Teknik | Tespit Kaynağı |
-|--------|----------------|
-| AMSI yaması | `amsi.dll` üzerinde `VirtualProtect` (Sysmon EID 10/11); `Microsoft-Windows-Amsi` olaylarının kaybolması |
-| ETW yaması | Eksik `EtwEventWrite` geri çağrımları; sessiz güvenlik sağlayıcıları |
-| SAM erişimi | `HKLM\SAM\SAM\Domains\Account\Users` üzerinde `RegOpenKeyEx` (Sysmon EID 12/13) |
-| LSA sırları | Alışılmadık gizli adlarla `LsaRetrievePrivateData` çağrıları |
-| SSH anahtar okuma | `%USERPROFILE%\.ssh\id_*` dosyalarında okuma (Sysmon EID 11) |
-| WiFi çıkarma | `WLAN_PROFILE_GET_PLAINTEXT_KEY` bayrağı ile `WlanGetProfile` |
+| Technique | Detection Source |
+|-----------|-----------------|
+| AMSI patch | `VirtualProtect` on `amsi.dll` (Sysmon EID 10/11); missing `Microsoft-Windows-Amsi` events |
+| ETW patch | Missing `EtwEventWrite` callbacks; silent security providers |
+| SAM access | `RegOpenKeyEx` on `HKLM\SAM\SAM\Domains\Account\Users` (Sysmon EID 12/13) |
+| LSA secrets | `LsaRetrievePrivateData` calls with unusual secret names |
+| SSH key reads | File reads on `%USERPROFILE%\.ssh\id_*` (Sysmon EID 11) |
+| WiFi extraction | `WlanGetProfile` with `WLAN_PROFILE_GET_PLAINTEXT_KEY` flag |
 
 ---
 
-## Sorumluluk Reddi
+## Disclaimer
 
-Bu materyal **yalnızca yetkili güvenlik testi, tespit mühendisliği ve eğitim amaçlıdır.** Yazarlar kötüye kullanımdan sorumlu değildir. Yetkili test ile yasa dışı faaliyet arasındaki farkı ayırt edemiyorsanız, bu kodu kullanmayın.
+This material is provided for **authorized security testing, detection engineering, and educational purposes only.** The authors assume no liability for misuse. If you cannot distinguish between authorized testing and illegal activity, do not use this code.
